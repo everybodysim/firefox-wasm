@@ -35,11 +35,23 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path("site/index.html")
           s = p.read_text()
-          counter = "${{ github.run_number }}"
-          s = s.replace("<h1>Firefox in WebAssembly</h1>", f"<h1>Firefox in WebAssembly ({counter})</h1>", 1)
+
+          marker = '<script type="module"'
+          if 'coi-serviceworker.js' not in s:
+              s = s.replace(
+                  marker,
+                  '<script src="./coi-serviceworker.js"></script>\n    ' + marker,
+                  1,
+              )
+
+          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.googleapis\.com"[^>]*>', '', s)
+          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.gstatic\.com"[^>]*>', '', s)
+          s = re.sub(r'\s*<link\s+href="https://fonts\.googleapis\.com/css2\?[^"]*"[^>]*>', '', s)
+
           p.write_text(s)
           PY
 
