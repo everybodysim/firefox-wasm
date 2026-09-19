@@ -36,12 +36,10 @@ jobs:
           set -e
           python3 - <<'PY'
           from pathlib import Path
-
           import re
-          from pathlib import Path
 
           root = Path("site")
-          pattern = re.compile(r'https://[^"\'\\\s]+\\.puter\\.work/')
+          pattern = re.compile(r'https://[^"\'\\\s]+\.puter\.work/')
           matches = []
 
           for p in root.rglob("*"):
@@ -57,20 +55,7 @@ jobs:
                   p.write_text(pattern.sub("./wisp.txt", s), encoding="utf-8")
 
           if not matches:
-              print("ERROR: no *.puter.work WISP endpoint was found in the prebuilt release.")
-              print("Relevant URLs found in text assets:")
-              urlish = re.compile(r'https://[^"\'\\\s]+')
-              for p in root.rglob("*"):
-                  if not p.is_file():
-                      continue
-                  try:
-                      s = p.read_text(encoding="utf-8")
-                  except (UnicodeDecodeError, OSError):
-                      continue
-                  for u in urlish.findall(s):
-                      if "wisp" in u.lower() or "puter" in u.lower():
-                          print(f"{p}: {u[:300]}")
-              raise SystemExit("ERROR: refusing to deploy without locating the bundled WISP endpoint.")
+              raise SystemExit("ERROR: no *.puter.work WISP endpoint was found in the prebuilt release.")
 
           for p, x in matches:
               print(f"WISP endpoint patched in {p}: {x} -> ./wisp.txt")
