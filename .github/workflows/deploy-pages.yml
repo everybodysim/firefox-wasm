@@ -101,6 +101,13 @@ jobs:
           s = p.read_text()
           n = os.environ["BUILD_NUMBER"]
 
+          # Force the full rendering/JIT configuration for this deployment.
+          # The release stores these options in localStorage; stale software-mode
+          # settings can make media/canvas-heavy sites painfully slow.
+          startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = true;\n  o.jit = true;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
+          if "chrome-demo-opts" not in s.split("<script type="module"", 1)[0]:
+              s = s.replace("</head>", startup + "</head>", 1)
+
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
 
           # The prebuilt release uses a software-rendering paint command on every
