@@ -88,7 +88,7 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Add build number and force GPU/Wasm JIT
+      - name: Add build number and force GPU and disable experimental Wasm JIT
         env:
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
@@ -101,10 +101,10 @@ jobs:
           s = p.read_text()
           n = os.environ["BUILD_NUMBER"]
 
-          # Force the full rendering/JIT configuration for this deployment.
+          # Force GPU rendering while deliberately disabling the experimental Wasm JIT. The upstream project documents that its JIT is not usable on many websites; YouTube is one of the sites where we want the normal interpreter path.
           # The release stores these options in localStorage; stale software-mode
           # settings can make media/canvas-heavy sites painfully slow.
-          startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = true;\n  o.jit = true;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
+          startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = true;\n  o.jit = false;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
           head_before_module = s.split('<script type="module"', 1)[0]
           if "chrome-demo-opts" not in head_before_module:
               s = s.replace("</head>", startup + "</head>", 1)
