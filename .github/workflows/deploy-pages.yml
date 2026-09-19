@@ -31,6 +31,34 @@ jobs:
           test -f site/chrome-assets.tar.zst
           test -f site/chrome-assets.json
 
+      - name: Configure WISP for GitHub Pages
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("site/index.html")
+          s = p.read_text()
+
+          old = "https://sensible-ship-8305.puter.work/"
+          new = "./wisp.txt"
+
+          if old not in s:
+              raise SystemExit("ERROR: Puter WISP endpoint was not found in the prebuilt bundle; refusing to deploy an unpatched build.")
+
+          s2 = s.replace(old, new)
+
+          if s2 == s:
+              raise SystemExit("ERROR: WISP replacement made no change.")
+
+          p.write_text(s2)
+
+          Path("site/wisp.txt").write_text("wss://wisp.mercurywork.shop/\n")
+
+          print("WISP configuration patched: bundled Puter endpoint -> ./wisp.txt")
+          print("WISP endpoint: wss://wisp.mercurywork.shop/")
+          PY
+
       - name: Make the release GitHub-Pages compatible
         run: |
           python3 - <<'PY'
