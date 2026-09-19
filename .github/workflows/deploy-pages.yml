@@ -88,7 +88,7 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Add build number and reduce render-loop pressure
+      - name: Add build number and force GPU/Wasm JIT
         env:
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
@@ -111,39 +111,9 @@ jobs:
 
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
 
-          # The prebuilt release uses a software-rendering paint command on every
-          # animation frame. Cap the host-side RAF rate to ~30 FPS to reduce the
-          # pressure from the JS -> Gecko command queue.
-          patch = r'''<script>
-          (() => {
-            const nativeRAF = window.requestAnimationFrame.bind(window);
-            const nativeCAF = window.cancelAnimationFrame.bind(window);
-            let last = 0;
-            let nextId = 1;
-            const pending = new Map();
-            window.requestAnimationFrame = (cb) => {
-              const id = nextId++;
-              pending.set(id, true);
-              const now = performance.now();
-              const wait = Math.max(0, 33 - (now - last));
-              setTimeout(() => {
-                if (!pending.delete(id)) return;
-                nativeRAF((ts) => {
-                  last = ts;
-                  cb(ts);
-                });
-              }, wait);
-              return id;
-            };
-            window.cancelAnimationFrame = (id) => {
-              pending.delete(id);
-              nativeCAF(id);
-            };
-          })();
-          </script>'''
-          if 'Firefox WASM build-number render-loop patch' not in s:
-              patch = patch.replace('<script>', '<script>/* Firefox WASM build-number render-loop patch */', 1)
-              s = s.replace('</head>', patch + '\n</head>', 1)
+          # Do not monkey-patch requestAnimationFrame globally.
+          # Firefox's own paint loop already throttles GPU mode, and replacing
+          # RAF affects the embedded browser UI and every website it loads.
           p.write_text(s)
           PY
 
