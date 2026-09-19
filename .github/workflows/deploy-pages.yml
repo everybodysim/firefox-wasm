@@ -41,41 +41,31 @@ jobs:
           s = p.read_text()
 
           marker = '<script type="module"'
-          if 'coi-serviceworker.js' not in s:
-              s = s.replace(
-                  marker,
-                  '<script src="./coi-serviceworker.js"></script>\n    ' + marker,
-                  1,
-              )
-
-          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.googleapis\.com"[^>]*>', '', s)
-          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.gstatic\.com"[^>]*>', '', s)
-          s = re.sub(r'\s*<link\s+href="https://fonts\.googleapis\.com/css2\?[^"]*"[^>]*>', '', s)
-
-          # The release archive is prebuilt, so source edits are not compiled into
-          # the Pages artifact. The branded build already discovers Puter's real WISP
-          # endpoint from sensible-ship-8305.puter.work, so leave that networking path
-          # untouched. Force software rendering by intercepting the exact options read
-          # by the prebuilt module before it starts.
-          marker = '<script type="module"'
           patch = r'''<script>
+          /* REVEAL_BOOTED_FIREFOX */
           (() => {
-            try {
-              const originalGetItem = Storage.prototype.getItem;
-              Storage.prototype.getItem = function(key) {
-                if (key === "chrome-demo-opts") {
-                  return JSON.stringify({ gpu: false, jit: false });
-                }
-                return originalGetItem.call(this, key);
+            const reveal = () => {
+              document.getElementById("splash")?.classList.add("done");
+              document.getElementById("screen")?.classList.add("ready");
+            };
+            const watch = () => {
+              const out = document.getElementById("console-output");
+              if (!out) return false;
+              const check = () => {
+                if (out.textContent?.includes("[chrome-demo] Firefox front-end booted")) reveal();
               };
-            } catch {}
+              new MutationObserver(check).observe(out, {childList:true, subtree:true, characterData:true});
+              check();
+              return true;
+            };
+            if (!watch()) {
+              const t = setInterval(() => { if (watch()) clearInterval(t); }, 100);
+            }
           })();
           </script>
           '''
-          if 'FORCE_SOFTWARE_RENDERING' not in s:
-              patch = patch.replace('<script>', '<script>\n          /* FORCE_SOFTWARE_RENDERING */', 1)
+          if 'REVEAL_BOOTED_FIREFOX' not in s:
               s = s.replace(marker, patch + marker, 1)
-
           p.write_text(s)
           PY
 
