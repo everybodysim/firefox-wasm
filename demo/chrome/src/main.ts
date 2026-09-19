@@ -165,7 +165,10 @@ const saved: Partial<Opts> = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
 const opts: Opts = {
   gpu: saved.gpu ?? true, // GPU acceleration on by default
   jit: saved.jit ?? false, // wasm JIT off by default (GECKO_NOWASMJIT set)
-  wisp: puterBranding ? defaultWisp : (saved.wisp ?? defaultWisp),
+  // Static GitHub Pages must use the hosted WISP endpoint. Do not reuse an older
+  // saved /wisp/ value from a previous build, because that endpoint only exists
+  // on the Vite dev/preview server.
+  wisp: defaultWisp,
 };
 
 const gpuToggle = document.getElementById("opt-gpu") as HTMLInputElement;
