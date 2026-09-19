@@ -136,13 +136,21 @@ wispUrl.protocol = location.protocol === "https:" ? "wss:" : "ws:";
 let defaultWisp = wispUrl.href;
 const puterBranding = Boolean(import.meta.env.VITE_PUTER_BRANDING);
 
-if (puterBranding) {
-  await fetch("https://sensible-ship-8305.puter.work/")
-    .then((r) => r.text())
-    .then((t) => {
-      defaultWisp = t.trim();
-    });
-}
+// GitHub Pages is static, so it cannot provide the local /wisp/ WebSocket
+// proxy that the Vite dev server provides. Use the project's hosted WISP
+// endpoint for static deployments; fall back to same-origin /wisp/ if it is
+// unavailable.
+await fetch("https://sensible-ship-8305.puter.work/")
+  .then((r) => {
+    if (!r.ok) throw new Error(`WISP endpoint discovery failed (${r.status})`);
+    return r.text();
+  })
+  .then((t) => {
+    if (t.trim()) defaultWisp = t.trim();
+  })
+  .catch((e) => {
+    console.warn("[chrome-demo] hosted WISP discovery failed; using local /wisp/", e);
+  });
 
 // Engine options are consumed when the engine boots (GECKO_GPU / GECKO_NOWASMJIT
 // are read once at init, WISP installs in preRun). Init only happens on the
