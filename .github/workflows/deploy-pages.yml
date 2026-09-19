@@ -117,6 +117,31 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Make site navigation non-blocking in the embedded Firefox UI
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+
+          patched = 0
+          needle = 'async load(e){await this.run({op:L,url:e})}'
+          replacement = r'''async load(e){if(this.opts.env?.GECKO_CHROME&&!/^(?:chrome:|about:)/.test(e)){const A=JSON.stringify(e);await this.run({op:te,url:"setTimeout(function(){try{var t=gBrowser.addTab("+A+",{triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal(),forceNotRemote:true,inBackground:false});gBrowser.selectedTab=t}catch(e){console.error('embed load error',e)}},0)"});return}await this.run({op:L,url:e})}'''
+
+          for p in Path("site").rglob("*.js"):
+              try:
+                  s = p.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              if needle in s:
+                  s2 = s.replace(needle, replacement, 1)
+                  p.write_text(s2, encoding="utf-8")
+                  patched += 1
+                  print(f"Patched non-blocking navigation in {p}")
+
+          if patched != 1:
+              raise SystemExit(f"ERROR: expected exactly 1 bundled Gecko JS file to patch, found {patched}")
+          PY
+
       - name: Add the cross-origin-isolation service worker
         run: |
           cat > site/coi-serviceworker.js <<'EOF'
