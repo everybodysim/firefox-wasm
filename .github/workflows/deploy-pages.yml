@@ -1,0 +1,141 @@
+name: Deploy Firefox WASM to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the prebuilt Firefox WASM demo
+        run: |
+          set -e
+          mkdir -p site
+          curl -fL --retry 5 --retry-delay 3 \
+            "https://github.com/HeyPuter/firefox-wasm/releases/download/v0.0.1/chrome-demo-v0.0.1.tar.gz" \
+            -o /tmp/firefox.tar.gz
+          tar -tzf /tmp/firefox.tar.gz | head -20
+          tar -xzf /tmp/firefox.tar.gz -C site --strip-components=1
+
+      - name: Make the release GitHub-Pages compatible
+        run: |
+          set -e
+          test -f site/index.html
+          test -f site/gecko.wasm.zst || test -f site/gecko.wasm
+          test -f site/chrome-assets.tar.zst
+          test -f site/chrome-assets.json
+
+          # The upstream build uses relative Vite paths, so it can live at
+          # /firefox-wasm/ instead of the domain root.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("site/index.html")
+          s = p.read_text()
+
+          # GitHub Pages cannot provide the COOP/COEP headers the threaded
+          # WebAssembly engine needs. The service worker below supplies them.
+          marker = '<script type="module"'
+          if 'coi-serviceworker.js' not in s:
+              s = s.replace(
+                  marker,
+                  '<script src="./coi-serviceworker.js"></script>\n    ' + marker,
+                  1,
+              )
+
+          # COEP blocks third-party Google Fonts on a static Pages origin.
+          # The Firefox UI already has a complete local stylesheet, so remove
+          # the external font/preconnect tags rather than letting them break
+          # cross-origin isolation.
+          import re
+          s = re.sub(r'\\s*<link rel="preconnect" href="https://fonts\\.googleapis\\.com"[^>]*>', '', s)
+          s = re.sub(r'\\s*<link rel="preconnect" href="https://fonts\\.gstatic\\.com"[^>]*>', '', s)
+          s = re.sub(r'\\s*<link\\s+href="https://fonts\\.googleapis\\.com/css2\\?[^"]*"[^>]*>', '', s)
+
+          p.write_text(s)
+          PY
+
+      - name: Add the cross-origin-isolation service worker
+        run: |
+          cat > site/coi-serviceworker.js <<'EOF'
+          (() => {
+            const VERSION = "firefox-wasm-coi-1";
+
+            if (typeof window !== "undefined") {
+              if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.register("./coi-serviceworker.js", {
+                  scope: "./",
+                  updateViaCache: "none"
+                }).then((registration) => {
+                  if (navigator.serviceWorker.controller) return;
+                  const reload = () => window.location.reload();
+                  if (registration.active) reload();
+                  else if (registration.installing) {
+                    registration.installing.addEventListener("statechange", (e) => {
+                      if (e.target.state === "activated") reload();
+                    });
+                  }
+                }).catch((error) => {
+                  console.error("COI service worker registration failed:", error);
+                });
+              }
+              return;
+            }
+
+            self.addEventListener("install", () => self.skipWaiting());
+            self.addEventListener("activate", (event) => {
+              event.waitUntil(self.clients.claim());
+            });
+
+            self.addEventListener("fetch", (event) => {
+              event.respondWith((async () => {
+                const response = await fetch(event.request);
+                const headers = new Headers(response.headers);
+                headers.set("Cross-Origin-Opener-Policy", "same-origin");
+                headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+                headers.set("Cross-Origin-Resource-Policy", "same-origin");
+                return new Response(response.body, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers
+                });
+              })());
+            });
+          })();
+          EOF
+
+      - name: Add a Pages fallback
+        run: cp site/index.html site/404.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
