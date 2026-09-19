@@ -35,36 +35,35 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           p = Path("site/index.html")
           s = p.read_text()
 
-          marker = '<script type="module"'
+          # The v0.0.1 Puter-branded bundle discovers its Wisp endpoint by
+          # fetching sensible-ship-8305.puter.work/. That discovery works on
+          # the Puter-hosted demo but is unreliable from this static Pages
+          # deployment. Return a known Wisp-compatible public endpoint instead.
           patch = r'''<script>
-          /* REVEAL_BOOTED_FIREFOX */
           (() => {
-            const reveal = () => {
-              document.getElementById("splash")?.classList.add("done");
-              document.getElementById("screen")?.classList.add("ready");
+            const realFetch = window.fetch.bind(window);
+            window.fetch = (input, init) => {
+              let url = "";
+              try { url = typeof input === "string" ? input : input.url; } catch {}
+              if (url === "https://sensible-ship-8305.puter.work/" ||
+                  url === "https://sensible-ship-8305.puter.work") {
+                return Promise.resolve(new Response("wss://wisp.mercurywork.shop/", {
+                  status: 200,
+                  headers: {"Content-Type": "text/plain"}
+                }));
+              }
+              return realFetch(input, init);
             };
-            const watch = () => {
-              const out = document.getElementById("console-output");
-              if (!out) return false;
-              const check = () => {
-                if (out.textContent?.includes("[chrome-demo] Firefox front-end booted")) reveal();
-              };
-              new MutationObserver(check).observe(out, {childList:true, subtree:true, characterData:true});
-              check();
-              return true;
-            };
-            if (!watch()) {
-              const t = setInterval(() => { if (watch()) clearInterval(t); }, 100);
-            }
           })();
           </script>
           '''
-          if 'REVEAL_BOOTED_FIREFOX' not in s:
+          marker = '<script type="module"'
+          if 'PAGES_WISP_FALLBACK' not in s:
+              patch = patch.replace('<script>', '<script>/* PAGES_WISP_FALLBACK */', 1)
               s = s.replace(marker, patch + marker, 1)
           p.write_text(s)
           PY
