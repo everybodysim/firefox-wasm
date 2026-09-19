@@ -59,6 +59,13 @@ jobs:
           marker = '<script type="module"'
           patch = r'''<script>
           (() => {
+            // The prebuilt v0.0.1 demo enables GPU/WebRender by default. On a
+            // headless GitHub Pages embed that can stall browser.xhtml before first paint.
+            // Force the known-safe software path for the first launch; the user can
+            // re-enable GPU later from the advanced option.
+            try {
+              localStorage.setItem("chrome-demo-opts", JSON.stringify({ gpu: false, jit: false, wisp: "wss://wisp.mercurywork.shop/" }));
+            } catch {}
             const PUBLIC_WISP = "wss://wisp.mercurywork.shop/";
             const originalFetch = window.fetch.bind(window);
             window.fetch = (input, init) => {
