@@ -25,27 +25,21 @@ jobs:
           curl -fL --retry 5 --retry-delay 3 \
             "https://github.com/HeyPuter/firefox-wasm/releases/download/v0.0.1/chrome-demo-v0.0.1.tar.gz" \
             -o /tmp/firefox.tar.gz
-          tar -tzf /tmp/firefox.tar.gz | head -20
           tar -xzf /tmp/firefox.tar.gz -C site --strip-components=1
-
-      - name: Make the release GitHub-Pages compatible
-        run: |
-          set -e
           test -f site/index.html
           test -f site/gecko.wasm.zst || test -f site/gecko.wasm
           test -f site/chrome-assets.tar.zst
           test -f site/chrome-assets.json
 
-          # The upstream build uses relative Vite paths, so it can live at
-          # /firefox-wasm/ instead of the domain root.
+      - name: Make the release GitHub-Pages compatible
+        run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path("site/index.html")
           s = p.read_text()
 
-          # GitHub Pages cannot provide the COOP/COEP headers the threaded
-          # WebAssembly engine needs. The service worker below supplies them.
           marker = '<script type="module"'
           if 'coi-serviceworker.js' not in s:
               s = s.replace(
@@ -54,14 +48,9 @@ jobs:
                   1,
               )
 
-          # COEP blocks third-party Google Fonts on a static Pages origin.
-          # The Firefox UI already has a complete local stylesheet, so remove
-          # the external font/preconnect tags rather than letting them break
-          # cross-origin isolation.
-          import re
-          s = re.sub(r'\\s*<link rel="preconnect" href="https://fonts\\.googleapis\\.com"[^>]*>', '', s)
-          s = re.sub(r'\\s*<link rel="preconnect" href="https://fonts\\.gstatic\\.com"[^>]*>', '', s)
-          s = re.sub(r'\\s*<link\\s+href="https://fonts\\.googleapis\\.com/css2\\?[^"]*"[^>]*>', '', s)
+          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.googleapis\.com"[^>]*>', '', s)
+          s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.gstatic\.com"[^>]*>', '', s)
+          s = re.sub(r'\s*<link\s+href="https://fonts\.googleapis\.com/css2\?[^"]*"[^>]*>', '', s)
 
           p.write_text(s)
           PY
@@ -70,34 +59,26 @@ jobs:
         run: |
           cat > site/coi-serviceworker.js <<'EOF'
           (() => {
-            const VERSION = "firefox-wasm-coi-1";
-
             if (typeof window !== "undefined") {
-              if ("serviceWorker" in navigator) {
-                navigator.serviceWorker.register("./coi-serviceworker.js", {
-                  scope: "./",
-                  updateViaCache: "none"
-                }).then((registration) => {
-                  if (navigator.serviceWorker.controller) return;
-                  const reload = () => window.location.reload();
-                  if (registration.active) reload();
-                  else if (registration.installing) {
-                    registration.installing.addEventListener("statechange", (e) => {
-                      if (e.target.state === "activated") reload();
-                    });
-                  }
-                }).catch((error) => {
-                  console.error("COI service worker registration failed:", error);
-                });
-              }
+              if (!("serviceWorker" in navigator)) return;
+              navigator.serviceWorker.register("./coi-serviceworker.js", {
+                scope: "./",
+                updateViaCache: "none"
+              }).then((registration) => {
+                if (navigator.serviceWorker.controller) return;
+                const reload = () => window.location.reload();
+                if (registration.active) reload();
+                else if (registration.installing) {
+                  registration.installing.addEventListener("statechange", (e) => {
+                    if (e.target.state === "activated") reload();
+                  });
+                }
+              }).catch(console.error);
               return;
             }
 
             self.addEventListener("install", () => self.skipWaiting());
-            self.addEventListener("activate", (event) => {
-              event.waitUntil(self.clients.claim());
-            });
-
+            self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
             self.addEventListener("fetch", (event) => {
               event.respondWith((async () => {
                 const response = await fetch(event.request);
@@ -120,6 +101,8 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
