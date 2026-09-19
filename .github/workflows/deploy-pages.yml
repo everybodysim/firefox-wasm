@@ -105,7 +105,8 @@ jobs:
           # The release stores these options in localStorage; stale software-mode
           # settings can make media/canvas-heavy sites painfully slow.
           startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = true;\n  o.jit = true;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
-          if "chrome-demo-opts" not in s.split("<script type="module"", 1)[0]:
+          head_before_module = s.split('<script type="module"', 1)[0]
+          if "chrome-demo-opts" not in head_before_module:
               s = s.replace("</head>", startup + "</head>", 1)
 
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
