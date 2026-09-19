@@ -52,6 +52,42 @@ jobs:
           s = re.sub(r'\s*<link rel="preconnect" href="https://fonts\.gstatic\.com"[^>]*>', '', s)
           s = re.sub(r'\s*<link\s+href="https://fonts\.googleapis\.com/css2\?[^"]*"[^>]*>', '', s)
 
+          # The release archive is prebuilt, so changes to demo/chrome/src/main.ts
+          # are NOT compiled into the Pages site. Inject a runtime WISP override into
+          # the downloaded bundle instead. GitHub Pages cannot host the /wisp/ WebSocket
+          # proxy used by Vite, so route the static build to the public Wisp server.
+          marker = '<script type="module"'
+          patch = r'''<script>
+          (() => {
+            const PUBLIC_WISP = "wss://wisp.mercurywork.shop/";
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = (input, init) => {
+              const url = typeof input === "string" ? input : input?.url;
+              if (url === "https://sensible-ship-8305.puter.work/" || url?.endsWith("/wisp/")) {
+                return Promise.resolve(new Response(PUBLIC_WISP, {
+                  status: 200,
+                  headers: { "Content-Type": "text/plain" }
+                }));
+              }
+              return originalFetch(input, init);
+            };
+            const OriginalWebSocket = window.WebSocket;
+            window.WebSocket = function(url, protocols) {
+              if (typeof url === "string" && /\\bwss?:\\/\\/[^/]+\\/(?:.*\\/)?wisp\\/?$/.test(url)) url = PUBLIC_WISP;
+              else if (typeof url === "string" && /\\/(?:wisp)\\/?$/.test(url)) url = PUBLIC_WISP;
+              return protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols);
+            };
+            window.WebSocket.prototype = OriginalWebSocket.prototype;
+            window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+            window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+            window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+            window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+          })();
+          </script>
+          '''
+          if 'PUBLIC_WISP' not in s:
+              s = s.replace(marker, patch + marker, 1)
+
           p.write_text(s)
           PY
 
