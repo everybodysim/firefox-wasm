@@ -111,9 +111,17 @@ jobs:
 
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
 
-          # Do not monkey-patch requestAnimationFrame globally.
-          # Firefox's own paint loop already throttles GPU mode, and replacing
-          # RAF affects the embedded browser UI and every website it loads.
+          # The GPU bridge otherwise polls at 250ms when idle (~4 FPS).
+          # Keep the browser paint loop at the page's animation-frame rate.
+          for jsfile in Path("site").rglob("*.js"):
+              try:
+                  js = jsfile.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              old = 'const interval = this.popupShown ? 0 : IDLE_POLL_MS;'
+              if old in js:
+                  jsfile.write_text(js.replace(old, 'const interval = 0;', 1), encoding="utf-8")
+                  print(f"Removed GPU idle polling cap in {jsfile}")
           p.write_text(s)
           PY
 
@@ -159,6 +167,84 @@ jobs:
           frame_source = "(() => {\n  try {\n    const win = content.wrappedJSObject;\n    const proto = win.KeyboardEvent && win.KeyboardEvent.prototype;\n    if (!proto || proto.__firefoxWasmCodeFix) return;\n    const old = Object.getOwnPropertyDescriptor(proto, \"code\");\n    if (!old || typeof old.get !== \"function\") return;\n\n    const map = (e) => {\n      const k = e.key;\n      const loc = e.location;\n      if (k === \"ArrowUp\" || k === \"ArrowDown\" || k === \"ArrowLeft\" || k === \"ArrowRight\") return k;\n      if (k === \" \" || k === \"Spacebar\") return \"Space\";\n      if (k === \"Enter\") return \"Enter\";\n      if (k === \"Escape\" || k === \"Esc\") return \"Escape\";\n      if (k === \"Tab\") return \"Tab\";\n      if (k === \"Backspace\") return \"Backspace\";\n      if (k === \"Delete\") return \"Delete\";\n      if (k === \"Insert\") return \"Insert\";\n      if (k === \"Home\" || k === \"End\" || k === \"PageUp\" || k === \"PageDown\") return k;\n      if (k === \"Shift\") return loc === 2 ? \"ShiftRight\" : \"ShiftLeft\";\n      if (k === \"Control\") return loc === 2 ? \"ControlRight\" : \"ControlLeft\";\n      if (k === \"Alt\") return loc === 2 ? \"AltRight\" : \"AltLeft\";\n      if (k === \"Meta\") return loc === 2 ? \"MetaRight\" : \"MetaLeft\";\n      if (/^[a-zA-Z]$/.test(k)) return \"Key\" + k.toUpperCase();\n      if (/^[0-9]$/.test(k)) return \"Digit\" + k;\n      if (/^F([1-9]|1[0-2])$/.test(k)) return k;\n      const punctuation = {\n        \"-\": \"Minus\", \"_\": \"Minus\", \"=\": \"Equal\", \"+\": \"Equal\",\n        \"[\": \"BracketLeft\", \"{\": \"BracketLeft\",\n        \"]\": \"BracketRight\", \"}\": \"BracketRight\",\n        \"\\\\\": \"Backslash\", \"|\": \"Backslash\",\n        \";\": \"Semicolon\", \":\": \"Semicolon\",\n        \"'\": \"Quote\", \"\\\"\": \"Quote\",\n        \"`\": \"Backquote\", \"~\": \"Backquote\",\n        \",\": \"Comma\", \"<\": \"Comma\",\n        \".\": \"Period\", \">\": \"Period\",\n        \"/\": \"Slash\", \"?\": \"Slash\"\n      };\n      return punctuation[k] || \"\";\n    };\n\n    Object.defineProperty(proto, \"code\", {\n      configurable: true,\n      enumerable: old.enumerable,\n      get() {\n        let v = \"\";\n        try { v = old.get.call(this) || \"\"; } catch (_) {}\n        return v && v !== \"Unidentified\" ? v : (map(this) || v);\n      }\n    });\n    Object.defineProperty(proto, \"__firefoxWasmCodeFix\", {\n      value: true,\n      configurable: false,\n      enumerable: false\n    });\n  } catch (_) {}\n})()"
           snippet = "<script>\n(() => {\n  const frameSource = \"(() => {\\n  try {\\n    const win = content.wrappedJSObject;\\n    const proto = win.KeyboardEvent && win.KeyboardEvent.prototype;\\n    if (!proto || proto.__firefoxWasmCodeFix) return;\\n    const old = Object.getOwnPropertyDescriptor(proto, \\\"code\\\");\\n    if (!old || typeof old.get !== \\\"function\\\") return;\\n\\n    const map = (e) => {\\n      const k = e.key;\\n      const loc = e.location;\\n      if (k === \\\"ArrowUp\\\" || k === \\\"ArrowDown\\\" || k === \\\"ArrowLeft\\\" || k === \\\"ArrowRight\\\") return k;\\n      if (k === \\\" \\\" || k === \\\"Spacebar\\\") return \\\"Space\\\";\\n      if (k === \\\"Enter\\\") return \\\"Enter\\\";\\n      if (k === \\\"Escape\\\" || k === \\\"Esc\\\") return \\\"Escape\\\";\\n      if (k === \\\"Tab\\\") return \\\"Tab\\\";\\n      if (k === \\\"Backspace\\\") return \\\"Backspace\\\";\\n      if (k === \\\"Delete\\\") return \\\"Delete\\\";\\n      if (k === \\\"Insert\\\") return \\\"Insert\\\";\\n      if (k === \\\"Home\\\" || k === \\\"End\\\" || k === \\\"PageUp\\\" || k === \\\"PageDown\\\") return k;\\n      if (k === \\\"Shift\\\") return loc === 2 ? \\\"ShiftRight\\\" : \\\"ShiftLeft\\\";\\n      if (k === \\\"Control\\\") return loc === 2 ? \\\"ControlRight\\\" : \\\"ControlLeft\\\";\\n      if (k === \\\"Alt\\\") return loc === 2 ? \\\"AltRight\\\" : \\\"AltLeft\\\";\\n      if (k === \\\"Meta\\\") return loc === 2 ? \\\"MetaRight\\\" : \\\"MetaLeft\\\";\\n      if (/^[a-zA-Z]$/.test(k)) return \\\"Key\\\" + k.toUpperCase();\\n      if (/^[0-9]$/.test(k)) return \\\"Digit\\\" + k;\\n      if (/^F([1-9]|1[0-2])$/.test(k)) return k;\\n      const punctuation = {\\n        \\\"-\\\": \\\"Minus\\\", \\\"_\\\": \\\"Minus\\\", \\\"=\\\": \\\"Equal\\\", \\\"+\\\": \\\"Equal\\\",\\n        \\\"[\\\": \\\"BracketLeft\\\", \\\"{\\\": \\\"BracketLeft\\\",\\n        \\\"]\\\": \\\"BracketRight\\\", \\\"}\\\": \\\"BracketRight\\\",\\n        \\\"\\\\\\\\\\\": \\\"Backslash\\\", \\\"|\\\": \\\"Backslash\\\",\\n        \\\";\\\": \\\"Semicolon\\\", \\\":\\\": \\\"Semicolon\\\",\\n        \\\"'\\\": \\\"Quote\\\", \\\"\\\\\\\"\\\": \\\"Quote\\\",\\n        \\\"`\\\": \\\"Backquote\\\", \\\"~\\\": \\\"Backquote\\\",\\n        \\\",\\\": \\\"Comma\\\", \\\"<\\\": \\\"Comma\\\",\\n        \\\".\\\": \\\"Period\\\", \\\">\\\": \\\"Period\\\",\\n        \\\"/\\\": \\\"Slash\\\", \\\"?\\\": \\\"Slash\\\"\\n      };\\n      return punctuation[k] || \\\"\\\";\\n    };\\n\\n    Object.defineProperty(proto, \\\"code\\\", {\\n      configurable: true,\\n      enumerable: old.enumerable,\\n      get() {\\n        let v = \\\"\\\";\\n        try { v = old.get.call(this) || \\\"\\\"; } catch (_) {}\\n        return v && v !== \\\"Unidentified\\\" ? v : (map(this) || v);\\n      }\\n    });\\n    Object.defineProperty(proto, \\\"__firefoxWasmCodeFix\\\", {\\n      value: true,\\n      configurable: false,\\n      enumerable: false\\n    });\\n  } catch (_) {}\\n})()\";\n  const install = async () => {\n    if (!window.geckoEvalChrome) return;\n    try {\n      const result = await window.geckoEvalChrome(\n        \"(() => { try { Services.mm.loadFrameScript(\" +\n        JSON.stringify(\"data:text/javascript;charset=utf-8,\") +\n        \" + encodeURIComponent(\" + JSON.stringify(frameSource) + \"), true); return 'keyboard-code-fix-installed'; } \" +\n        \"catch (e) { return 'keyboard-code-fix-error:' + e; } })()\"\n      );\n      if (result) {\n        console.log(\"[keyboard] \" + result);\n        clearInterval(timer);\n      }\n    } catch (_) {}\n  };\n  const timer = setInterval(() => void install(), 250);\n  void install();\n})();\n</script>\n"
           if "keyboard-code-fix-installed" not in s:
+              s = s.replace("</body>", snippet + "</body>", 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: Add lightweight built-in ad blocking
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          p = Path("site/index.html")
+          s = p.read_text(encoding="utf-8")
+
+          blocker = r'''(() => {
+            try {
+              const Ci = Components.interfaces;
+              const Cr = Components.results;
+              const blockedHosts = [
+                "doubleclick.net","googlesyndication.com","googleadservices.com",
+                "googletagservices.com","adservice.google.com","amazon-adsystem.com",
+                "adnxs.com","criteo.com","taboola.com","outbrain.com","mgid.com",
+                "rubiconproject.com","pubmatic.com","openx.net","adform.net",
+                "adsrvr.org","adroll.com","bidswitch.net","indexexchange.com",
+                "casalemedia.com","contextweb.com","33across.com","sharethrough.com",
+                "sovrn.com","lijit.com","yieldmo.com","inmobi.com","applovin.com",
+                "ironsource.com","unityads.com","vungle.com","chartboost.com",
+                "moatads.com","flashtalking.com","demdex.net","bluekai.com",
+                "rlcdn.com","tapad.com","mathtag.com","eyeota.net","lotame.com",
+                "quantserve.com","scorecardresearch.com","media.net","popads.net",
+                "propellerads.com","exoclick.com","adsterra.com","revcontent.com",
+                "smartadserver.com","trafficjunky.net"
+              ];
+              const blockedPath = /(?:^|[/._-])(adserver|adsystem|adservice|advertising|doubleclick|pagead|prebid|vast|vpaid)(?:[/._?-]|$)/i;
+
+              const shouldBlock = (subject) => {
+                try {
+                  const c = subject.QueryInterface(Ci.nsIHttpChannel);
+                  const u = c.URI;
+                  const host = (u.host || "").toLowerCase().replace(/^www\./, "");
+                  const path = (u.pathQueryRef || "").toLowerCase();
+                  if (blockedHosts.some(d => host === d || host.endsWith("." + d))) return true;
+                  return blockedPath.test(path);
+                } catch (_) { return false; }
+              };
+
+              const observer = {
+                observe(subject, topic) {
+                  if (topic !== "http-on-modify-request") return;
+                  if (shouldBlock(subject)) {
+                    try { subject.QueryInterface(Ci.nsIHttpChannel).cancel(Cr.NS_BINDING_ABORTED); } catch (_) {}
+                  }
+                }
+              };
+              Services.obs.addObserver(observer, "http-on-modify-request");
+              return "adblock-installed";
+            } catch (e) {
+              return "adblock-error:" + e;
+            }
+          })()''';
+
+          snippet = """<script>
+          (() => {
+            const source = %s;
+            const install = async () => {
+              if (!window.geckoEvalChrome) return;
+              try {
+                const r = await window.geckoEvalChrome(source);
+                if (r === "adblock-installed") clearInterval(timer);
+              } catch (_) {}
+            };
+            const timer = setInterval(install, 250);
+            install();
+          })();
+          </script>
+          """ % json.dumps(blocker)
+
+          if "adblock-installed" not in s:
               s = s.replace("</body>", snippet + "</body>", 1)
           p.write_text(s, encoding="utf-8")
           PY
