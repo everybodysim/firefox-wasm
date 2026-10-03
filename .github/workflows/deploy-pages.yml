@@ -117,6 +117,31 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Disable hardware video decoding for stability
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("site/index.html")
+          s = p.read_text(encoding="utf-8")
+          snippet = r'''<script>
+(() => {
+  const apply = () => {
+    if (!window.geckoEvalChrome) return false;
+    const code = "(() => { try { Services.prefs.setBoolPref('media.hardware-video-decoding.enabled', false); Services.prefs.setBoolPref('media.hardware-video-decoding.force-enabled', false); Services.prefs.setBoolPref('media.wmf.low-latency.enabled', false); return 'video-decoding-disabled'; } catch (e) { return 'video-pref-error:' + e; } })()";
+    window.geckoEvalChrome(code).then((r) => { if (r) { console.log('[video] ' + r); clearInterval(timer); } }).catch(() => {});
+    return true;
+  };
+  const timer = setInterval(apply, 250);
+  apply();
+})();
+</script>
+'''
+          if "video-decoding-disabled" not in s:
+              s = s.replace("</body>", snippet + "</body>", 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+
       - name: Make site navigation non-blocking in the embedded Firefox UI
         run: |
           set -e
