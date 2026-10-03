@@ -117,7 +117,7 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Disable hardware video decoding for stability
+      - name: Limit memory-heavy browser caches
         run: |
           set -e
           python3 - <<'PY'
@@ -128,8 +128,8 @@ jobs:
 (() => {
   const apply = () => {
     if (!window.geckoEvalChrome) return false;
-    const code = "(() => { try { Services.prefs.setBoolPref('media.hardware-video-decoding.enabled', false); Services.prefs.setBoolPref('media.hardware-video-decoding.force-enabled', false); Services.prefs.setBoolPref('media.wmf.low-latency.enabled', false); return 'video-decoding-disabled'; } catch (e) { return 'video-pref-error:' + e; } })()";
-    window.geckoEvalChrome(code).then((r) => { if (r) { console.log('[video] ' + r); clearInterval(timer); } }).catch(() => {});
+    const code = "(() => { try { Services.prefs.setIntPref('media.memory_cache_max_size', 4096); Services.prefs.setIntPref('media.memory_caches_combined_limit_kb', 131072); Services.prefs.setIntPref('media.memory_caches_combined_limit_pc_sysmem', 2); Services.prefs.setIntPref('media.cache_size', 65536); Services.prefs.setIntPref('image.cache.size', 10 * 1024 * 1024); Services.prefs.setIntPref('image.mem.surfacecache.max_size_kb', 512 * 1024); Services.prefs.setIntPref('image.mem.surfacecache.size_factor', 8); return 'memory-limits-installed'; } catch (e) { return 'memory-pref-error:' + e; } })()";
+    window.geckoEvalChrome(code).then((r) => { if (r) { console.log('[memory] ' + r); clearInterval(timer); } }).catch(() => {});
     return true;
   };
   const timer = setInterval(apply, 250);
@@ -137,7 +137,7 @@ jobs:
 })();
 </script>
 '''
-          if "video-decoding-disabled" not in s:
+          if "memory-limits-installed" not in s:
               s = s.replace("</body>", snippet + "</body>", 1)
           p.write_text(s, encoding="utf-8")
           PY
