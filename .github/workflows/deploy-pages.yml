@@ -104,7 +104,7 @@ jobs:
           # Prefer hardware acceleration for normal performance; handle memory pressure separately.
           # Deliberately disable the experimental Wasm JIT because upstream documents that it is not usable on many websites.
           # Explicitly overwrite stale localStorage settings on every deployment.
-          startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = false;\n  o.jit = false;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
+          startup = """<script>\ntry {\n  const k = "chrome-demo-opts";\n  const o = JSON.parse(localStorage.getItem(k) || "{}");\n  o.gpu = true;\n  o.jit = false;\n  localStorage.setItem(k, JSON.stringify(o));\n} catch (_) {}\n</script>\n"""
           head_before_module = s.split('<script type="module"', 1)[0]
           if "chrome-demo-opts" not in head_before_module:
               s = s.replace("</head>", startup + "</head>", 1)
@@ -163,104 +163,6 @@ jobs:
           p.write_text(s, encoding="utf-8")
           PY
 
-      - name: Add lightweight built-in ad and tracker blocking
-        run: |
-          set -e
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path("site/index.html")
-          s = p.read_text(encoding="utf-8")
-
-          snippet = r'''<script>
-(() => {
-  const install = async () => {
-    if (!window.geckoEvalChrome || window.__fwAdBlockInstalled) return;
-
-    const code = `(() => {
-      try {
-        if (globalThis.__fwAdBlockObserver) return "adblock-already-installed";
-
-        const blocked = [
-          "doubleclick.net",
-          "googlesyndication.com",
-          "googleadservices.com",
-          "adservice.google.com",
-          "pagead2.googlesyndication.com",
-          "amazon-adsystem.com",
-          "adsystem.com",
-          "adnxs.com",
-          "criteo.com",
-          "taboola.com",
-          "outbrain.com",
-          "mgid.com",
-          "rubiconproject.com",
-          "pubmatic.com",
-          "openx.net",
-          "casalemedia.com",
-          "adform.net",
-          "scorecardresearch.com",
-          "quantserve.com",
-          "zedo.com",
-          "adsafeprotected.com",
-          "media.net",
-          "exoclick.com",
-          "popads.net",
-          "propellerads.com"
-        ];
-
-        const matches = (host) => {
-          host = String(host || "").toLowerCase().replace(/^\./, "");
-          for (const d of blocked) {
-            if (host === d || host.endsWith("." + d)) return true;
-          }
-          return false;
-        };
-
-        const observer = {
-          QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-          observe(subject, topic) {
-            if (topic !== "http-on-modify-request") return;
-            try {
-              const channel = subject.QueryInterface(Ci.nsIHttpChannel);
-              const uri = channel.URI;
-              if (uri && matches(uri.host)) {
-                channel.cancel(Cr.NS_BINDING_ABORTED);
-              }
-            } catch (_) {}
-          }
-        };
-
-        Services.obs.addObserver(observer, "http-on-modify-request");
-        globalThis.__fwAdBlockObserver = observer;
-        return "adblock-installed";
-      } catch (e) {
-        return "adblock-error:" + e;
-      }
-    })()`;
-
-    try {
-      const result = await window.geckoEvalChrome(code);
-      if (result) {
-        window.__fwAdBlockInstalled = true;
-        console.log("[adblock] " + result);
-        clearInterval(timer);
-      }
-    } catch (_) {}
-  };
-
-  const timer = setInterval(install, 500);
-  install();
-})();
-</script>
-'''
-
-          if "adblock-installed" not in s:
-              s = s.replace("</body>", snippet + "</body>", 1)
-
-          p.write_text(s, encoding="utf-8")
-          PY
-
       - name: Add the cross-origin-isolation service worker
         run: |
           cat > site/coi-serviceworker.js <<'EOF'
@@ -290,7 +192,7 @@ jobs:
                 const response = await fetch(event.request);
                 const headers = new Headers(response.headers);
                 headers.set("Cross-Origin-Opener-Policy", "same-origin");
-                headers.set("Cross-Origin-Embedder-Policy", "credentialless");
+                headers.set("Cross-Origin-Embedder-Policy", "require-corp");
                 headers.set("Cross-Origin-Resource-Policy", "same-origin");
                 return new Response(response.body, {
                   status: response.status,
