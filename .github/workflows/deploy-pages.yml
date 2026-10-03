@@ -120,7 +120,7 @@ jobs:
                   continue
               old = 'const interval = this.popupShown ? 0 : IDLE_POLL_MS;'
               if old in js:
-                  jsfile.write_text(js.replace(old, 'const interval = 0;', 1), encoding="utf-8")
+                  jsfile.write_text(js.replace(old, 'const interval = this.popupShown ? 0 : 33;', 1), encoding="utf-8")
                   print(f"Removed GPU idle polling cap in {jsfile}")
           p.write_text(s)
           PY
