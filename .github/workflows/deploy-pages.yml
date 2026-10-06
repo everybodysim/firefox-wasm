@@ -131,6 +131,21 @@ jobs:
                       1
                   )
                   js = js.replace(
+                      'if(WISP.conn)return WISP.conn;',
+                      'if(WISP.conn)return WISP.conn;if(Date.now()<WISP.nextRetryAt)return null;',
+                      1
+                  )
+                  js = js.replace(
+                      'WISP.conn=null;',
+                      'WISP.conn=null;WISP.failCount=Math.min(6,(WISP.failCount||0)+1);WISP.nextRetryAt=Date.now()+Math.min(10000,250*Math.pow(2,WISP.failCount-1));',
+                      1
+                  )
+                  js = js.replace(
+                      'var WISP={conn:null}',
+                      'var WISP={conn:null,failCount:0,nextRetryAt:0}',
+                      1
+                  )
+                  js = js.replace(
                       'stream.onclose=function(){if(conn.streams[id]){delete conn.streams[id];try{_wisp_set_eof(id)}catch(e){}}};',
                       'stream.onclose=function(reason){if(!conn.streams[id])return;delete conn.streams[id];try{_wisp_set_error(id,reason===73?11:104)}catch(e){}};',
                       1
