@@ -51,17 +51,23 @@ mergeInto(LibraryManager.library, {
       if (!Ctor) { err('[wisp] Module.WispClientConnection unset; networking disabled'); return null; }
       // wisp-js requires the endpoint to end with a trailing slash; be lenient.
       if (url[url.length - 1] !== '/') url += '/';
-      var conn = { client: null, ready: false, pending: [], streams: {} };
+      var conn = { client: null, ready: false, closed: false, pending: [], streams: {} };
       var client = new Ctor(url);
       conn.client = client;
       client.onopen = function () {
+        if (conn.closed) return;
         conn.ready = true;
         var p = conn.pending; conn.pending = [];
         for (var i = 0; i < p.length; i++) { try { p[i](); } catch (e) {} }
       };
       // Connection-level teardown: EOF every live stream and fail queued connects.
       var teardown = function (errno) {
+        if (conn.closed) return;
+        conn.closed = true;
         conn.ready = false;
+        // Drop the dead connection object so the next socket gets a fresh
+        // WebSocket instead of reusing a permanently-closed ClientConnection.
+        if (WISP.conn === conn) WISP.conn = null;
         var ids = Object.keys(conn.streams);
         for (var i = 0; i < ids.length; i++) {
           var id = ids[i] >>> 0;
