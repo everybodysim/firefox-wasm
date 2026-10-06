@@ -111,8 +111,8 @@ jobs:
 
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
 
-          # Patch the shipped WISP bridge too: a dead WebSocket must be
-          # discarded so the next Gecko socket can create a fresh connection.
+          # Patch the shipped WISP bridge too: discard dead WebSockets and
+          # make failed/throttled streams report socket errors instead of clean EOF.
           for jsfile in Path("site").rglob("*.js"):
               try:
                   js = jsfile.read_text(encoding="utf-8")
@@ -128,6 +128,11 @@ jobs:
                   js = js.replace(
                       'var conn={client:null,ready:false,pending:[],streams:{}};',
                       'var conn={client:null,ready:false,closed:false,pending:[],streams:{}};',
+                      1
+                  )
+                  js = js.replace(
+                      'stream.onclose=function(){if(conn.streams[id]){delete conn.streams[id];try{_wisp_set_eof(id)}catch(e){}}};',
+                      'stream.onclose=function(reason){if(!conn.streams[id])return;delete conn.streams[id];try{_wisp_set_error(id,reason===73?11:104)}catch(e){}};',
                       1
                   )
                   jsfile.write_text(js, encoding="utf-8")
