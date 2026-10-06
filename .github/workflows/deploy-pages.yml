@@ -111,6 +111,28 @@ jobs:
 
           s = re.sub(r'<title>.*?</title>', f'<title>Firefox in WebAssembly — Build #{n}</title>', s, count=1, flags=re.S)
 
+          # Patch the shipped WISP bridge too: a dead WebSocket must be
+          # discarded so the next Gecko socket can create a fresh connection.
+          for jsfile in Path("site").rglob("*.js"):
+              try:
+                  js = jsfile.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              old_wisp = 'var teardown=function(errno){conn.ready=false;'
+              if old_wisp in js:
+                  js = js.replace(
+                      old_wisp,
+                      'var teardown=function(errno){if(conn.closed)return;conn.closed=true;conn.ready=false;if(WISP.conn===conn)WISP.conn=null;',
+                      1
+                  )
+                  js = js.replace(
+                      'var conn={client:null,ready:false,pending:[],streams:{}};',
+                      'var conn={client:null,ready:false,closed:false,pending:[],streams:{}};',
+                      1
+                  )
+                  jsfile.write_text(js, encoding="utf-8")
+                  print(f"Patched WISP reconnect handling in {jsfile}")
+
           # The GPU bridge otherwise polls at 250ms when idle (~4 FPS).
           # Keep the browser paint loop at the page's animation-frame rate.
           for jsfile in Path("site").rglob("*.js"):
