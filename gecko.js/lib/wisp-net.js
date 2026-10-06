@@ -38,6 +38,8 @@ mergeInto(LibraryManager.library, {
   $WISP__deps: ['$DNS'],
   $WISP: {
     conn: null,
+    failCount: 0,
+    nextRetryAt: 0,
     // Lazily open the single ClientConnection to Module.wispUrl (set by index.ts,
     // which also injects the wisp-js ClientConnection class as
     // Module.WispClientConnection). `ready` flips on the WISP handshake (onopen);
@@ -45,6 +47,7 @@ mergeInto(LibraryManager.library, {
     // connects issued before the handshake completed.
     ensureConn: function () {
       if (WISP.conn) return WISP.conn;
+      if (Date.now() < WISP.nextRetryAt) return null;
       var url = (typeof Module !== 'undefined') && Module.wispUrl;
       if (!url) { err('[wisp] Module.wispUrl unset; networking disabled'); return null; }
       var Ctor = (typeof Module !== 'undefined') && Module.WispClientConnection;
@@ -57,6 +60,8 @@ mergeInto(LibraryManager.library, {
       client.onopen = function () {
         if (conn.closed) return;
         conn.ready = true;
+        WISP.failCount = 0;
+        WISP.nextRetryAt = 0;
         var p = conn.pending; conn.pending = [];
         for (var i = 0; i < p.length; i++) { try { p[i](); } catch (e) {} }
       };
@@ -68,6 +73,8 @@ mergeInto(LibraryManager.library, {
         // Drop the dead connection object so the next socket gets a fresh
         // WebSocket instead of reusing a permanently-closed ClientConnection.
         if (WISP.conn === conn) WISP.conn = null;
+        WISP.failCount = Math.min(6, (WISP.failCount || 0) + 1);
+        WISP.nextRetryAt = Date.now() + Math.min(10000, 250 * Math.pow(2, WISP.failCount - 1));
         var ids = Object.keys(conn.streams);
         for (var i = 0; i < ids.length; i++) {
           var id = ids[i] >>> 0;
