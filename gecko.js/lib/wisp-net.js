@@ -117,9 +117,20 @@ mergeInto(LibraryManager.library, {
           }
         };
         // wisp-js calls onclose(reason) when the server sends CLOSE for this stream.
-        stream.onclose = function () {
-          if (conn.streams[id]) { delete conn.streams[id]; try { _wisp_set_eof(id); } catch (e) {} }
+        stream.onclose = function (reason) {
+          if (!conn.streams[id]) return;
+          delete conn.streams[id];
+          // A stream that dies before receiving any bytes is a connection failure,
+          // not a clean EOF. In particular WISP 0x49 means the server throttled the
+          // stream; reporting EOF makes Necko believe TLS connected and can produce
+          // PR_END_OF_FILE_ERROR followed by rapid retry/navigation churn.
+          if (!stream._sawData) {
+            try { _wisp_set_error(id, (reason === 0x49) ? 11 /* EAGAIN */ : 104 /* ECONNRESET */); } catch (e) {}
+          } else {
+            try { _wisp_set_eof(id); } catch (e) {}
+          }
         };
+        stream._sawData = false;
         // WISP TCP doesn't ack connects; treat the stream as connected once CONNECT
         // is sent (matches the old shim's optimistic OPEN). Necko's poll then sees
         // POLLOUT and proceeds.
